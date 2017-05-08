@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.schema.CompactionParams;
 
 public final class TimeWindowCompactionStrategyOptions
 {
@@ -136,10 +137,24 @@ public final class TimeWindowCompactionStrategyOptions
             throw new ConfigurationException(String.format("%s is not a parsable int (base10) for %s", optionValue, EXPIRED_SSTABLE_CHECK_FREQUENCY_SECONDS_KEY), e);
         }
 
+        String unsafeAggressiveSstableExpiration = options.get(CompactionParams.Option.UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION.toString());
+        if(unsafeAggressiveSstableExpiration != null) {
+            if(!unsafeAggressiveSstableExpiration.equalsIgnoreCase("true") && !unsafeAggressiveSstableExpiration.equalsIgnoreCase("false"))
+            {
+                throw new ConfigurationException(String.format("unsafe_aggressive_sstable_expiration should either be 'true' or 'false', not %s", unsafeAggressiveSstableExpiration));
+            }
+
+            if(unsafeAggressiveSstableExpiration.equalsIgnoreCase("true") && !CompactionController.ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION)
+            {
+                throw new ConfigurationException("unsafe_aggressive_sstable_expiration is requested but not allowed, restart cassandra with -Dcassandra.allow_unsafe_aggressive_sstable_expiration=true to allow it");
+            }
+        }
+
         uncheckedOptions.remove(COMPACTION_WINDOW_SIZE_KEY);
         uncheckedOptions.remove(COMPACTION_WINDOW_UNIT_KEY);
         uncheckedOptions.remove(TIMESTAMP_RESOLUTION_KEY);
         uncheckedOptions.remove(EXPIRED_SSTABLE_CHECK_FREQUENCY_SECONDS_KEY);
+        uncheckedOptions.remove(CompactionParams.Option.UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION.toString());
 
         uncheckedOptions = SizeTieredCompactionStrategyOptions.validateOptions(options, uncheckedOptions);
 

@@ -46,7 +46,8 @@ public final class CompactionParams
         ENABLED,
         MIN_THRESHOLD,
         MAX_THRESHOLD,
-        PROVIDE_OVERLAPPING_TOMBSTONES;
+        PROVIDE_OVERLAPPING_TOMBSTONES,
+        UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION;
 
         @Override
         public String toString()
@@ -73,20 +74,25 @@ public final class CompactionParams
         ImmutableMap.of(Option.MIN_THRESHOLD.toString(), Integer.toString(DEFAULT_MIN_THRESHOLD),
                         Option.MAX_THRESHOLD.toString(), Integer.toString(DEFAULT_MAX_THRESHOLD));
 
+    public static final boolean DEFAULT_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION = false;
+    private final boolean unsafeAggressiveSstableExpiration;
+
     public static final CompactionParams DEFAULT =
-        new CompactionParams(SizeTieredCompactionStrategy.class, DEFAULT_THRESHOLDS, DEFAULT_ENABLED, DEFAULT_PROVIDE_OVERLAPPING_TOMBSTONES);
+        new CompactionParams(SizeTieredCompactionStrategy.class, DEFAULT_THRESHOLDS, DEFAULT_ENABLED, DEFAULT_PROVIDE_OVERLAPPING_TOMBSTONES, DEFAULT_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION);
 
     private final Class<? extends AbstractCompactionStrategy> klass;
     private final ImmutableMap<String, String> options;
     private final boolean isEnabled;
     private final TombstoneOption tombstoneOption;
 
-    private CompactionParams(Class<? extends AbstractCompactionStrategy> klass, Map<String, String> options, boolean isEnabled, TombstoneOption tombstoneOption)
+
+    private CompactionParams(Class<? extends AbstractCompactionStrategy> klass, Map<String, String> options, boolean isEnabled, TombstoneOption tombstoneOption, boolean unsafeAggressiveSstableExpiration)
     {
         this.klass = klass;
         this.options = ImmutableMap.copyOf(options);
         this.isEnabled = isEnabled;
         this.tombstoneOption = tombstoneOption;
+        this.unsafeAggressiveSstableExpiration = unsafeAggressiveSstableExpiration;
     }
 
     public static CompactionParams create(Class<? extends AbstractCompactionStrategy> klass, Map<String, String> options)
@@ -104,7 +110,10 @@ public final class CompactionParams
             allOptions.putIfAbsent(Option.MAX_THRESHOLD.toString(), Integer.toString(DEFAULT_MAX_THRESHOLD));
         }
 
-        return new CompactionParams(klass, allOptions, isEnabled, tombstoneOption);
+        boolean unsafe_aggressive_sstable_expiration = Boolean.valueOf(options.getOrDefault(Option.UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION.toString(),
+                                                                                            Boolean.toString(DEFAULT_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION)));
+
+        return new CompactionParams(klass, allOptions, isEnabled, tombstoneOption, unsafe_aggressive_sstable_expiration);
     }
 
     public static CompactionParams scts(Map<String, String> options)
@@ -115,6 +124,12 @@ public final class CompactionParams
     public static CompactionParams lcs(Map<String, String> options)
     {
         return create(LeveledCompactionStrategy.class, options);
+    }
+
+
+    public boolean isUnsafeAggressiveSstableExpiration()
+    {
+        return unsafeAggressiveSstableExpiration;
     }
 
     public int minCompactionThreshold()
