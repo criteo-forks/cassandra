@@ -1,0 +1,32 @@
+# Travis file to build release on new tags.
+
+language: java
+
+dist: trusty
+
+jdk:
+  - openjdk8
+
+install:
+  - VERSION=$(echo $TRAVIS_TAG | sed 's/^cassandra-//')
+  - 'echo "release: true" >> build.properties'
+  - '[ -n "$TRAVIS_TAG" ] && echo "base.version: $VERSION" >> build.properties'
+  - '[ -n "$TRAVIS_TAG" ] && echo "version: $VERSION" >> build.properties'
+  - ant init
+  - ant maven-ant-tasks-retrieve-build
+
+script:
+  - ant build
+
+before_deploy:
+  - ant artifacts
+
+deploy:
+  provider: releases
+  api_key:
+    secure: UGc+RrvpfOMvJrujWcYQjp8BeSs49LRomenS1yepcoJAsxlrHidqbPAlG4dxocihaEdYQ394CJT4sJVKG9ZhFTEhpYWlPey8Am7VBxU0AGkhegqxP20fYk0GJ+t4Y97DwXKEO+p3sCGoZpDWDOzMf0+tQFO9T6vecbOYkEOszDbK7o+vRYUTchg4xuuN116JhBdIkcJj4WB2BPUui37w2R8cR2fvG62PAV2mwRL9zxAR4OTl2S2YlvwwE8+FihddIWih9NGHjr7RlqWMBZLNo4CBJ0IQC/NiNsH7GzQs1bxGnPunzD414HGfbAThxP92hjvfmrWJsbA7jxYC7LXTLV7EhwGph8dW58slXRXAnieVkiUdd0VZGxjbqdDTwhWGNp/cdzX3s1WJJ2nJPCq7yA6pi4rYB64+SvEe53iAunnPbr3W8j4JyVesjIkwczY9q7afdS27IVPcwxEaGjvbozmiqfTTLC3pKLNQilnkP7cQiq45bBqPj43N5SLeFI2RucuIeIpElzOedssnyybuzi6hMINqRcLvK19BuOaWB99Cw3x0a/6HFNjRRrRvaVRBXbahrS1vBFegMnqBS7Y3NwFoNQp+31DfdZeOtjGtnwtoPZSI0DNbEnIiPuffkt8y9Ilh/Y41PqjyH04UVHy2yVT2mUKWiQBX3d8yeNGNNUU=
+  file_glob: true
+  file: build/apache-cassandra-*
+  skip_cleanup: true
+  on:
+    tags: true
