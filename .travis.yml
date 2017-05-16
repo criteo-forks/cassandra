@@ -8,6 +8,7 @@ jdk:
   - openjdk8
 
 install:
+  - 'if [ -z "$TRAVIS_TAG" ]; then exit 0; fi'
   - VERSION=$(echo $TRAVIS_TAG | sed 's/^cassandra-//')
   - 'echo "release: true" >> build.properties'
   - '[ -n "$TRAVIS_TAG" ] && echo "base.version: $VERSION" >> build.properties'
