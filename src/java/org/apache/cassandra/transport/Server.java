@@ -91,11 +91,9 @@ public class Server implements CassandraDaemon.Server
         }
         else
         {
-            if (useEpoll)
-                workerGroup = new EpollEventLoopGroup();
-            else
-                workerGroup = new NioEventLoopGroup();
+            workerGroup = NativeTransportService.getDefaultWorkerGroup();
         }
+
         if (builder.eventExecutorGroup != null)
             eventExecutorGroup = builder.eventExecutorGroup;
         EventNotifier notifier = new EventNotifier(this);
