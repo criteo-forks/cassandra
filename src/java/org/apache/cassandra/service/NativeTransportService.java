@@ -46,6 +46,8 @@ public class NativeTransportService
 
     private static final Logger logger = LoggerFactory.getLogger(NativeTransportService.class);
 
+    private static EventLoopGroup defaultWorkerGroup = null;
+
     private Collection<Server> servers = Collections.emptyList();
 
     private boolean initialized = false;
@@ -64,16 +66,7 @@ public class NativeTransportService
         // prepare netty resources
         eventExecutorGroup = new RequestThreadPoolExecutor();
 
-        if (useEpoll())
-        {
-            workerGroup = new EpollEventLoopGroup();
-            logger.info("Netty using native Epoll event loop");
-        }
-        else
-        {
-            workerGroup = new NioEventLoopGroup();
-            logger.info("Netty using Java NIO event loop");
-        }
+        workerGroup = getDefaultWorkerGroup();
 
         int nativePort = DatabaseDescriptor.getNativeTransportPort();
         int nativePortSSL = DatabaseDescriptor.getNativeTransportPortSSL();
@@ -160,6 +153,26 @@ public class NativeTransportService
     {
         final boolean enableEpoll = Boolean.parseBoolean(System.getProperty("cassandra.native.epoll.enabled", "true"));
         return enableEpoll && Epoll.isAvailable();
+    }
+
+    /**
+     * @return the default worker group.
+     */
+    public static EventLoopGroup getDefaultWorkerGroup() {
+        if (defaultWorkerGroup != null)
+            return defaultWorkerGroup;
+
+        if (useEpoll())
+        {
+            logger.info("Netty using native Epoll event loop");
+            defaultWorkerGroup = new EpollEventLoopGroup();
+        }
+        else
+        {
+            logger.info("Netty using Java NIO event loop");
+            defaultWorkerGroup = new NioEventLoopGroup();
+        }
+        return defaultWorkerGroup;
     }
 
     /**
