@@ -20,7 +20,6 @@ package org.apache.cassandra.db.compaction;
 import java.util.*;
 import java.util.function.Predicate;
 
-import org.apache.cassandra.config.Config;
 import org.apache.cassandra.db.Memtable;
 import org.apache.cassandra.db.rows.UnfilteredRowIterator;
 
@@ -50,10 +49,7 @@ import static org.apache.cassandra.db.lifecycle.SSTableIntervalTree.buildInterva
 public class CompactionController implements AutoCloseable
 {
     private static final Logger logger = LoggerFactory.getLogger(CompactionController.class);
-    private static final String NEVER_PURGE_TOMBSTONES_PROPERTY = Config.PROPERTY_PREFIX + "never_purge_tombstones";
-    public static final boolean NEVER_PURGE_TOMBSTONES = Boolean.getBoolean(NEVER_PURGE_TOMBSTONES_PROPERTY);
-    private static final String ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION_PROPERTY = Config.PROPERTY_PREFIX + "allow_unsafe_aggressive_sstable_expiration";
-    public static final boolean ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION = Boolean.getBoolean(ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION_PROPERTY);
+    static final boolean NEVER_PURGE_TOMBSTONES = Boolean.getBoolean("cassandra.never_purge_tombstones");
 
     public final ColumnFamilyStore cfs;
     private final boolean compactingRepaired;
@@ -62,7 +58,6 @@ public class CompactionController implements AutoCloseable
     // is no overlap.
     private Refs<SSTableReader> overlappingSSTables;
     private OverlapIterator<PartitionPosition, SSTableReader> overlapIterator;
-    private final boolean ignoreOverlaps;
     private final Iterable<SSTableReader> compacting;
     private final RateLimiter limiter;
     private final long minTimestamp;
@@ -79,15 +74,10 @@ public class CompactionController implements AutoCloseable
     public CompactionController(ColumnFamilyStore cfs, Set<SSTableReader> compacting, int gcBefore)
     {
         this(cfs, compacting, gcBefore, null,
-             cfs.getCompactionStrategyManager().getCompactionParams().tombstoneOption(),
-             cfs.getCompactionStrategyManager().getCompactionParams().isUnsafeAggressiveSstableExpiration());
+             cfs.getCompactionStrategyManager().getCompactionParams().tombstoneOption());
     }
 
-    public CompactionController(ColumnFamilyStore cfs, Set<SSTableReader> compacting, int gcBefore, RateLimiter limiter, TombstoneOption tombstoneOption){
-        this(cfs, compacting, gcBefore, limiter, tombstoneOption,
-             cfs.getCompactionStrategyManager().getCompactionParams().isUnsafeAggressiveSstableExpiration());
-    }
-    public CompactionController(ColumnFamilyStore cfs, Set<SSTableReader> compacting, int gcBefore, RateLimiter limiter, TombstoneOption tombstoneOption, boolean ignoreOverlaps)
+    public CompactionController(ColumnFamilyStore cfs, Set<SSTableReader> compacting, int gcBefore, RateLimiter limiter, TombstoneOption tombstoneOption)
     {
         assert cfs != null;
         this.cfs = cfs;
@@ -99,35 +89,16 @@ public class CompactionController implements AutoCloseable
         this.minTimestamp = compacting != null && !compacting.isEmpty()       // check needed for test
                           ? compacting.stream().mapToLong(SSTableReader::getMinTimestamp).min().getAsLong()
                           : 0;
-
-        if(ignoreOverlaps && !ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION) {
-            logger.warn("Requested unsafe_aggressive_sstable_expiration but not allowed. Restart cassandra with -D{}=true to allow it",
-                    ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION_PROPERTY);
-        }
-        this.ignoreOverlaps = ignoreOverlaps && ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION;
-        if(this.ignoreOverlaps)
-            logger.warn("You are running with -D{}=true this is dangerous ! It disables sstables overlapping checks",
-                    ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION_PROPERTY);
-
         refreshOverlaps();
         if (NEVER_PURGE_TOMBSTONES)
-            logger.warn("You are running with -D{}, this is dangerous!",
-                    NEVER_PURGE_TOMBSTONES_PROPERTY);
+            logger.warn("You are running with -Dcassandra.never_purge_tombstones=true, this is dangerous!");
     }
 
     public void maybeRefreshOverlaps()
     {
         if (NEVER_PURGE_TOMBSTONES)
         {
-            logger.debug("not refreshing overlaps - running with -D{}=true",
-                    NEVER_PURGE_TOMBSTONES_PROPERTY);
-            return;
-        }
-
-        if(ignoreOverlaps)
-        {
-            logger.debug("not refreshing overlaps - running with -D{}=true",
-                    ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION_PROPERTY);
+            logger.debug("not refreshing overlaps - running with -Dcassandra.never_purge_tombstones=true");
             return;
         }
 
@@ -149,7 +120,7 @@ public class CompactionController implements AutoCloseable
         if (this.overlappingSSTables != null)
             close();
 
-        if (compacting == null || ignoreOverlaps)
+        if (compacting == null)
             overlappingSSTables = Refs.tryRef(Collections.<SSTableReader>emptyList());
         else
             overlappingSSTables = cfs.getAndReferenceOverlappingLiveSSTables(compacting);
@@ -161,17 +132,6 @@ public class CompactionController implements AutoCloseable
         return getFullyExpiredSSTables(cfs, compacting, overlappingSSTables, gcBefore);
     }
 
-    public static Set<SSTableReader> getFullyExpiredSSTables(ColumnFamilyStore cfs, Set<SSTableReader> compacting, int gcBefore)
-    {
-        Collection<SSTableReader> overlapping = shouldIgnoreOverlaps(cfs)
-                                              ? Collections.emptySet()
-                                              : cfs.getOverlappingLiveSSTables(compacting);
-        return getFullyExpiredSSTables(cfs, compacting, overlapping, gcBefore);
-    }
-
-    private static boolean shouldIgnoreOverlaps(ColumnFamilyStore cfs) {
-        return (cfs.getCompactionStrategyManager().getCompactionParams().isUnsafeAggressiveSstableExpiration() && ALLOW_UNSAFE_AGGRESSIVE_SSTABLE_EXPIRATION);
-    }
     /**
      * Finds expired sstables
      *
@@ -191,8 +151,6 @@ public class CompactionController implements AutoCloseable
     public static Set<SSTableReader> getFullyExpiredSSTables(ColumnFamilyStore cfStore, Iterable<SSTableReader> compacting, Iterable<SSTableReader> overlapping, int gcBefore)
     {
         logger.trace("Checking droppable sstables in {}", cfStore);
-        logger.trace("Compacting: {}", compacting);
-        logger.trace("Overlapping: {}", overlapping);
 
         if (NEVER_PURGE_TOMBSTONES || compacting == null)
             return Collections.<SSTableReader>emptySet();
@@ -200,14 +158,8 @@ public class CompactionController implements AutoCloseable
         if (cfStore.getCompactionStrategyManager().onlyPurgeRepairedTombstones() && !Iterables.all(compacting, SSTableReader::isRepaired))
             return Collections.emptySet();
 
-        if (shouldIgnoreOverlaps(cfStore))
-        {
-            logger.debug("Unsafe_aggressive_sstable_expiration is activated on {}.{}, skipping checks for overlapping sstables",
-                    cfStore.keyspace.getName(), cfStore.getTableName());
-            overlapping = Collections.emptySet();
-        }
-
         List<SSTableReader> candidates = new ArrayList<>();
+
         long minTimestamp = Long.MAX_VALUE;
 
         for (SSTableReader sstable : overlapping)
@@ -222,7 +174,7 @@ public class CompactionController implements AutoCloseable
         {
             if (candidate.getSSTableMetadata().maxLocalDeletionTime < gcBefore)
                 candidates.add(candidate);
-            else if (!shouldIgnoreOverlaps(cfStore))
+            else
                 minTimestamp = Math.min(minTimestamp, candidate.getMinTimestamp());
         }
 
@@ -234,7 +186,6 @@ public class CompactionController implements AutoCloseable
         // candidates with no constructive values. The ones out of these that have
         // (getMaxTimestamp() < minTimestamp) serve no purpose anymore.
 
-        logger.trace("Candidates: {}", candidates);
         Iterator<SSTableReader> iterator = candidates.iterator();
         while (iterator.hasNext())
         {
@@ -359,5 +310,4 @@ public class CompactionController implements AutoCloseable
     {
         return limiter != null ? reader.openDataReader(limiter) : reader.openDataReader();
     }
-
 }
