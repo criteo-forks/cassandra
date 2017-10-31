@@ -39,6 +39,7 @@ public enum OperationType
     VIEW_BUILD("View build"),
     INDEX_SUMMARY("Index summary redistribution"),
     RELOCATE("Relocate sstables to correct disk"),
+    REPAIR("Repairs sessions"),
     GARBAGE_COLLECT("Remove deleted data");
 
     public final String type;

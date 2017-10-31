@@ -17,6 +17,8 @@
  */
 package org.apache.cassandra.tools.nodetool;
 
+import java.io.IOException;
+
 import io.airlift.command.Arguments;
 import io.airlift.command.Command;
 import io.airlift.command.Option;
@@ -30,7 +32,7 @@ public class Stop extends NodeToolCmd
 {
     @Arguments(title = "compaction_type",
               usage = "<compaction type>",
-              description = "Supported types are COMPACTION, VALIDATION, CLEANUP, SCRUB, VERIFY, INDEX_BUILD",
+              description = "Supported types are COMPACTION, VALIDATION, CLEANUP, SCRUB, VERIFY, INDEX_BUILD, REPAIR",
               required = false)
     private OperationType compactionType = OperationType.UNKNOWN;
 
@@ -43,6 +45,18 @@ public class Stop extends NodeToolCmd
     @Override
     public void execute(NodeProbe probe)
     {
+        if (compactionType == OperationType.REPAIR) {
+            try
+            {
+                probe.forceTerminateAllRepairSessions();
+            }
+            catch (IOException e)
+            {
+                e.printStackTrace();
+            }
+            return;
+        }
+
         if (!compactionId.isEmpty())
             probe.stopById(compactionId);
         else
