@@ -266,7 +266,6 @@ public class QueryController
                 estimatedRowCount = (long)Math.sqrt((double)estimatedRowCount);
 
             expressionScores.add(Pair.create(expression, estimatedRowCount));
-            logger.trace("Estimated row count for {}: {}", expression.toString(), estimatedRowCount);
         }
         expressionScores.sort(((a, b) -> b.right.compareTo(a.right)));
 
@@ -282,10 +281,8 @@ public class QueryController
     {
         // first let's determine the primary expression if op is AND
         Pair<Expression, Set<SSTableIndex>> primary = (op == OperationType.AND) ? calculatePrimary(expressions) : null;
-
         Map<Expression, Set<SSTableIndex>> indexes = new HashMap<>();
 
-        logger.trace("Expressions: {}, Op: {}", expressions.toString(), op);
         for (Expression e : expressions)
         {
             // NO_EQ and non-index column query should only act as FILTER BY for satisfiedBy(Row) method
@@ -317,7 +314,6 @@ public class QueryController
 
             indexes.put(e, readers);
         }
-        logger.trace("Final view: {}", indexes);
 
         return indexes;
     }
